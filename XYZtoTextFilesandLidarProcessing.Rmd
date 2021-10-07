@@ -7,8 +7,7 @@ output:
     df_print: paged
 ---
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-                      
+                 
 ```
 
 # 1. Purpose
@@ -107,19 +106,17 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   if(dir.exists(adcp_path)){
     setwd(adcp_path)
     i=1
-    ls=list.files(pattern="ADCP.txt$")
+    ls=list.files(pattern="ADCP.csv$")
     for(i in 1:length(ls)){
-      adcp=read.table(ls[i],sep="\t",header=TRUE)
+      adcp=read.table(ls[i],sep=",",header=TRUE)
       adcp=as.data.frame(adcp,stringsAsFactors=FALSE)
       if(i==1){
-        adcp=subset(adcp,select=c("UTM_X","UTM_Y","Z"))
         colnames(adcp)=c("X","Y","Z")
         all=adcp
         temp=NULL
         adcp_all=plyr::rbind.fill(all,temp)
         
       }else{
-        adcp=subset(adcp,select=c("UTM_X","UTM_Y","Z"))
         colnames(adcp)=c("X","Y","Z")
         temp=adcp
         adcp_all=plyr::rbind.fill(all,temp)
@@ -137,19 +134,17 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   if(dir.exists(gps_path)){
     setwd(gps_path)
     i=1
-    ls=list.files(pattern="GPS.txt$")
+    ls=list.files(pattern="GPS.csv$")
     for(i in 1:length(ls)){
-      gps=read.table(ls[i],sep="\t",header=TRUE)
+      gps=read.table(ls[i],sep=",",header=TRUE)
       gps=as.data.frame(gps,stringsAsFactors=FALSE)
       if(i==1){
-        gps=subset(gps,select=c("X","Y","Z"))
         colnames(gps)=c("X","Y","Z")
         all=gps
         temp=NULL
         gps_all=plyr::rbind.fill(all,temp)
         
       }else{
-        gps=subset(gps,select=c("UTM_X","UTM_Y","Z","Bed_elev"))
         colnames(gps)=c("X","Y","Z")
         temp=gps
         gps_all=plyr::rbind.fill(all,temp)
@@ -185,7 +180,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   map_pt_count = round(total_points*0.25)
   lower_qa_pt_bound = round(0.1*map_pt_count)
   upper_qa_pt_bound = round(0.15*map_pt_count)
-  qa_pt_count = median(c(lower_qa_pt_bound, upper_qa_pt_bound))
+  qa_pt_count = round(median(c(lower_qa_pt_bound, upper_qa_pt_bound)))
   approx_QAgroupsize = round(qa_pt_count/0.75)
   num_groups = round(total_points / approx_QAgroupsize)
   FifteenPercContourQAsize = round(qa_pt_count*0.15)
@@ -221,6 +216,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
 ```
 
 
+
 ```{r}
 LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   memory.size(max=TRUE)
@@ -248,14 +244,14 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #This section will read both in and combine them into one file and export it with only X, Y, and Z data.
   print("Working on Lidar files...")
   setwd(lidar_path)
-  ls=list.files(lidar_path,pattern=".laz$")
-  
+  ls=list.files(lidar_path,pattern=(".las|.laz"))
+
   #Reading in the Lidar files in a loop
   if(length(ls)!=0){
     i=1
     for(i in 1:length(ls)){
       las=readLAS(paste(lidar_path,"/",ls[i],sep=""))
-      las=lasfilterduplicates(las) #Removing duplicate points
+      las=filter_duplicates(las) #Removing duplicate points
       #las=lasfiltersurfacepoints(las,res=1) #Filtering to get ground returns only and setting the resolution
       
       las_sp=as.spatial(las) #converting from .LAZ to a spatial points dataframe to a regular dataframe
@@ -281,11 +277,12 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
 
       rm(las)
       rm(las_sp)
+      las_all$Source <- "Lidar"
       #The National Map DEM-->points conversion and concatenation with lidar
       print("Adding in the NED DEM...")
       ls = list.files(pattern="proj.tif$")
       dem_proj = raster(ls[1],xy=TRUE)
-      utm15crs <- crs("+proj=utm +zone=15 +ellps=GRS80 +units=m +no_defs")
+      utm15crs <- crs("+proj=utm +zone=15 +units=m +datum=NAD83 +no_defs")
       temp_las <- st_as_sf(las_all,coords=c("X","Y"),crs=utm15crs)
       las_bbox <- st_bbox(temp_las,xmin=min(las_all$X), xmax=max(las_all$X),
                           ymin=min(las_all$Y), ymax=max(las_all$Y),crs=utm15crs)
@@ -294,7 +291,8 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
       las_buffer_extent <- st_bbox(las_bbox_buffer)
       dem_clipped <- crop(x=dem_proj, y=las_buffer_extent)
       dem_df=as.data.frame(dem_clipped,xy=TRUE)
-      colnames(dem_df)=c("X","Y","Z")
+      dem_df$Source <- "NED"
+      colnames(dem_df)=c("X","Y","Z","Source")
       dem_df=na.omit(dem_df)
       las_all <- rbind(las_all,dem_df)
     }else{
@@ -303,7 +301,8 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
       dem_proj = raster(ls[1],xy=TRUE)
       dem_df = as.data.frame(dem_proj,xy=TRUE)
       las_all=dem_df
-      colnames(dem_df)=c("X","Y","Z")
+      dem_df$Source <- "NED"
+      colnames(dem_df)=c("X","Y","Z","Source")
       dem_df=na.omit(dem_df)
       las_all <- dem_df
     }
@@ -313,7 +312,7 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #Refer to Excel document for corrected WSE and the WSL Projections Proposal for top of dam/spillway
   print("Merging and moving stuff around...")
   elev=las_all[,3]
-  clip_las=subset(las_all,elev<=(dam_elev + 3)) #Selects Lidar points that are less than 3 meters above the dam/spillway
+  clip_las=subset(las_all,elev<=(dam_elev + 5)) #Selects Lidar points that are less than 3 meters above the dam/spillway
   clip_las$Z=clip_las$Z*3.28 #Converting to feet
   
   print("Writing out the best-looking tables you've ever seen...")
@@ -329,22 +328,63 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
 
 ```
 
+
+```{r}
+XCheckToTextFiles <- function(home_dir,lake_name){
+  sort_path = paste(home_dir,"/Sort",sep="")
+  out_path = paste(home_dir,"/RTextFiles",sep="")
+  
+  #Concatenating XYZ files only
+  setwd(sort_path)
+  ls=list.files(pattern="k.xyz$")
+  print(ls)
+  
+  
+  i=1
+  for(i in 1:length(ls)){
+    xcheck=read.table(ls[i],sep=" ")
+    xcheck=as.data.frame(xcheck,stringsAsFactors=FALSE)
+    
+    if(i==1){
+      colnames(xcheck)=c("X","Y","Zxcheck")
+      all=xcheck
+      temp=NULL
+      xcheck_all=plyr::rbind.fill(all,temp)
+      
+    }else{
+      colnames(xcheck)=c("X","Y","Zxcheck")
+      temp=xcheck
+      xcheck_all=plyr::rbind.fill(all,temp)
+    }
+    
+  }
+  xcheck_all$Zxcheck <- xcheck_all$Zxcheck*3.2808
+  write.table(xcheck_all,file=paste(out_path,"/",lake_name,"_xcheck.csv",sep=""),sep=",",row.names = FALSE)
+  write.table(xcheck_all,file=paste(out_path,"/",lake_name,"_xcheck.txt",sep=""),sep=",",row.names = FALSE)
+  
+  
+}
+```
+
 ## This program requires 4 inputs from the user: the home lake directory, the lake name, the dam/spillway elevation (in meters), and the water surface elevation (in meters). The output is the text files containing the XYZ_uncert_source information and the Lidar text file that contains its XYZ information.Printed on the screen will be QA map point counts and other details necessary for documentation and QA processes. Enter these in the QAMapPointCounts spreadsheet. Do NOT forget to click Knit at the top of the screen after the program runs! This is necessary for documentation. I promise you'll thank me for it when you need this information again in 6 months.
 
 #Sit back, relax, and watch the magic happen...
 
 ```{r}
 
-XYZToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_Harrisonville",
-                                 lake_name = "Harrisonville",
-                                 WSEL =272.998,
-                                 dam_elev =273.576)
+XYZToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
+                                 lake_name = "GardenCityOld",
+                                 WSEL =271.74,
+                                 dam_elev =271.874)
 
+LidarToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
+                                 lake_name = "GardenCityOld",
+                                 WSEL =271.74,
+                                 dam_elev =271.874)
 
-LidarToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_Harrisonville",
-                                 lake_name = "Harrisonville",
-                                 WSEL =272.998,
-                                 dam_elev =273.576)
+XCheckToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
+                                 lake_name = "GardenCityOld")
+
 
 ```
 

@@ -6,7 +6,7 @@ Script:   ThalwegLinearInterpolation.py
 
 Author:   loyler@usgs.gov
 
-Modified: 2021-07-12
+Modified: 2021-09-07
 
 Purpose:  Creating linearly interpolated points between multibeam xyz_thinned and las_thinned points in coves and areas
             where connection points are sparse.
