@@ -11,15 +11,17 @@ output:
 ```
 
 # 1. Purpose
-This code uses ### R SCRIPT ### and combines all CUBE .xyz and CUBE Uncertainty .xyz for each lake survey into one file and removing overlappling/non-matching points. More specifically, the list of files is read in from the directory. Regardless of the number of CUBE files in the directory, it will remove
-the cross check file and read in the uncertainty file separately while combining all of the xyz files into one data frame.
-This also binds the xyz and uncertainty columns while removing duplicates and creates two new columns for QA and Map.
+This code uses ### R SCRIPT ### and combines all CUBE .xyz and CUBE Uncertainty .xyz for each lake survey into one file and removing overlappling/non-matching points. More specifically, the list of files is read in from the directory. Regardless of the number of CUBE files in the directory, it will remove the cross check file and read in the uncertainty file separately while combining all of the xyz files into one data frame.This also binds the xyz and uncertainty columns while removing duplicates and creates two new columns for QA and Map.
+
+Secondly, this code combines LiDAR .las files and the NED DEM GeoTIFF file and converts them to .csv and text files.
+
+Lastly, this code performs the same combining, filtering, and file conversion operations on the cross-check (XCheck) files and outputs .txt and .csv files into the RTextFiles folder.
 
 # 2. Function Definitions and Running the Program
 ##################################################################################################
 ```{r}
 
-XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
+XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev,alt_source_types){
   gc()
   memory.size(max=TRUE)
   #Required libraries
@@ -29,6 +31,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   list.of.packages <- c("lidR", "rgdal", "raster","stringr","dplyr","sf")
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
   if(length(new.packages)) install.packages(new.packages)
+  options("rgdal_show_exportToProj4_warnings"="none")
   
   library(lidR)
   library(rgdal)
@@ -41,8 +44,6 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   ##Establishing Sort, Lidar, ADCP, GPS, and Output directories
   sort_path = paste(home_dir,"/Sort",sep="")
   lidar_path = paste(home_dir,"/Lidar",sep="")
-  adcp_path = paste(home_dir,"/ADCP",sep="")
-  gps_path = paste(home_dir,"/GPS",sep="")
   out_path = paste(home_dir,"/RTextFiles",sep="")
   
   #Concatenating XYZ files only
@@ -101,59 +102,47 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
     }
   }  
   #########
-  #Looping through the ADCP files (if they exist) and concatenating them. This loop is skipped if they do not exist
-  print("Working on ADCP files...")
-  if(dir.exists(adcp_path)){
-    setwd(adcp_path)
-    i=1
-    ls=list.files(pattern="ADCP.csv$")
-    for(i in 1:length(ls)){
-      adcp=read.table(ls[i],sep=",",header=TRUE)
-      adcp=as.data.frame(adcp,stringsAsFactors=FALSE)
-      if(i==1){
-        colnames(adcp)=c("X","Y","Z")
-        all=adcp
-        temp=NULL
-        adcp_all=plyr::rbind.fill(all,temp)
+  #Looping through the alternative source files (if they exist) and concatenating them. This loop is skipped if they do not exist
+
+  i=1
+  if(length(alt_source_types!=0)){
+    for(i in 1:length(alt_source_types)){
+      type = alt_source_types[[i]]
+      paste("Working on",type,"files...")
+      alt_path = paste(home_dir,"/",type,sep="")
+      if(dir.exists(alt_path)){
+        setwd(alt_path)
+        j=1
+        ls=list.files(pattern=".csv$")
+        for(j in 1:length(ls)){
+          alt=read.table(ls[j],sep=",",header=TRUE)
+          alt=as.data.frame(alt,stringsAsFactors=FALSE)
+          if(j==1){
+            colnames(alt)=c("X","Y","Z")
+            all=alt
+            temp=NULL
+            alt_all=plyr::rbind.fill(all,temp)
+    
+          }else{
+            colnames(alt)=c("X","Y","Z")
+            temp=alt
+            alt_all=plyr::rbind.fill(all,temp)
+          }
+        }  
         
-      }else{
-        colnames(adcp)=c("X","Y","Z")
-        temp=adcp
-        adcp_all=plyr::rbind.fill(all,temp)
-      }
-    }  
-    
-    adcp_all[c("Source")]="ADCP"
-    
-  }
-  
-  
-  #########
-  #Looping through the GPS files (if they exist) and concatenating them. This loop is skipped if they do not exist
-  print("Working on GPS files...")
-  if(dir.exists(gps_path)){
-    setwd(gps_path)
-    i=1
-    ls=list.files(pattern="GPS.csv$")
-    for(i in 1:length(ls)){
-      gps=read.table(ls[i],sep=",",header=TRUE)
-      gps=as.data.frame(gps,stringsAsFactors=FALSE)
-      if(i==1){
-        colnames(gps)=c("X","Y","Z")
-        all=gps
-        temp=NULL
-        gps_all=plyr::rbind.fill(all,temp)
+        alt_all[c("Source")]=type
         
-      }else{
-        colnames(gps)=c("X","Y","Z")
-        temp=gps
-        gps_all=plyr::rbind.fill(all,temp)
+        if(i==1){
+          full_alt_table = plyr::rbind.fill(alt_all)
+        }else{
+          full_alt_table = plyr::rbind.fill(full_alt_table,alt_all)
+        }
+        
       }
-    }  
-    
-    gps_all[c("Source")]="GPS"
+      
+    }
   }
-  
+
   
   clip_xyz=subset(xyz_all,xyz_all$Z < (WSEL+0.5)) #Selects MB points that are 0.5 meter above the WSEL and less
   clip_uncert=subset(uncert_all,uncert_all$TPU<=1.52) #Removing points with a CUBE Uncertainty >1.52 meters (~5 feet)
@@ -163,17 +152,17 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   print("Merging, combining, and moving some stuff around!")
   df=merge(clip_xyz,clip_uncert,by=(c("X","Y"))) #Merging the MB and CUBE uncertainty points by XY location
   
-  if(dir.exists(adcp_path)){
-    df=plyr::rbind.fill(df,adcp_all)
-  } ##Adding ADCP points into the overall dataframe if they exist
+  if(length(alt_source_types!=0)){
+    df=plyr::rbind.fill(df,full_alt_table)
+    df$TPU <- ifelse(df$Source!="MB",-9999,df$TPU)
+  } ##Adding alternative source points into the overall dataframe if they exist
   
-  if(dir.exists(gps_path)){
-    df=plyr::rbind.fill(df, gps_all)
-  } ##Adding GPS points into the overall dataframe if they exist
-  
+
   df=unique(df) #Removing duplicates that may have occurred during joining 
-  df$Z=df$Z*3.28 #Converting the Z column to feet
-  df$TPU=df$TPU*3.28 #Converting the CUBE Uncert column
+  df$Z=df$Z*3.2808 #Converting the Z column to feet
+  df$TPU <- ifelse(df$Source=="MB",df$TPU*3.2808,df$TPU)
+
+  #df$TPU=df$TPU*3.28 #Converting the CUBE Uncert column
   
   #Setting the number of QA points and randomization groups
   total_points = nrow(xyz_all)
@@ -212,6 +201,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev){
   #Stopping the clock to record how long the program took to run
   end.time <- Sys.time()
   time.taken <- end.time - start.time
+  print(time.taken)
 }
 ```
 
@@ -244,7 +234,7 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #This section will read both in and combine them into one file and export it with only X, Y, and Z data.
   print("Working on Lidar files...")
   setwd(lidar_path)
-  ls=list.files(lidar_path,pattern=(".las|.laz"))
+  ls=list.files(lidar_path,pattern=(".las"))
 
   #Reading in the Lidar files in a loop
   if(length(ls)!=0){
@@ -282,10 +272,10 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
       print("Adding in the NED DEM...")
       ls = list.files(pattern="proj.tif$")
       dem_proj = raster(ls[1],xy=TRUE)
-      utm15crs <- crs("+proj=utm +zone=15 +units=m +datum=NAD83 +no_defs")
-      temp_las <- st_as_sf(las_all,coords=c("X","Y"),crs=utm15crs)
+
+      temp_las <- st_as_sf(las_all,coords=c("X","Y"),crs="EPSG:6344")
       las_bbox <- st_bbox(temp_las,xmin=min(las_all$X), xmax=max(las_all$X),
-                          ymin=min(las_all$Y), ymax=max(las_all$Y),crs=utm15crs)
+                          ymin=min(las_all$Y), ymax=max(las_all$Y),y)
       las_bbox_poly=st_as_sfc(las_bbox)
       las_bbox_buffer=st_buffer(las_bbox_poly,1000)
       las_buffer_extent <- st_bbox(las_bbox_buffer)
@@ -312,7 +302,7 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #Refer to Excel document for corrected WSE and the WSL Projections Proposal for top of dam/spillway
   print("Merging and moving stuff around...")
   elev=las_all[,3]
-  clip_las=subset(las_all,elev<=(dam_elev + 5)) #Selects Lidar points that are less than 3 meters above the dam/spillway
+  clip_las=subset(las_all,elev<=(dam_elev + 5)) #Selects Lidar points that are less than 5 meters above the dam/spillway
   clip_las$Z=clip_las$Z*3.28 #Converting to feet
   
   print("Writing out the best-looking tables you've ever seen...")
@@ -323,6 +313,7 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #Stopping the clock to record how long the program took to run
   end.time <- Sys.time()
   time.taken <- end.time - start.time
+  print(time.taken)
   
 }
 
@@ -366,23 +357,42 @@ XCheckToTextFiles <- function(home_dir,lake_name){
 }
 ```
 
-## This program requires 4 inputs from the user: the home lake directory, the lake name, the dam/spillway elevation (in meters), and the water surface elevation (in meters). The output is the text files containing the XYZ_uncert_source information and the Lidar text file that contains its XYZ information.Printed on the screen will be QA map point counts and other details necessary for documentation and QA processes. Enter these in the QAMapPointCounts spreadsheet. Do NOT forget to click Knit at the top of the screen after the program runs! This is necessary for documentation. I promise you'll thank me for it when you need this information again in 6 months.
 
-#Sit back, relax, and watch the magic happen...
+
+## This program requires 5 unique inputs from the user: the home lake directory, the lake name, the dam/spillway elevation (in meters), the water surface elevation (in meters), and the names of any alternative source types (ADCP, GPS, SB, etc). Note: the alternative source types should be entered as a list. "Alternative source type" refers to anything that is not multibeam data. For example:
+
+*alt_source_types = c("ADCP","SB")* #if there are two or more alternative source types
+
+OR
+
+*alt_source_types = "ADCP"* #if there is one alternative source type
+
+OR
+
+*alt_source_types = c()* #if there are NO alternative source types
+
+### The outputs are text files and csv files in the RTextFiles folder containing the XYZ_uncert_source information, the Lidar text files and csv files that contains its XYZ information, and text files and csv files of the cross-check (XCheck) points xyz locations.Printed on the screen will be QA map point counts and other details necessary for documentation and QA processes. Enter these in the QAMapPointCounts spreadsheet. 
+
+### Do NOT forget to click Knit at the top of the screen after the program runs! This is necessary for documentation. I promise you'll thank me for it when you need this information again in 6 months. The HTML output of the knitting will be stored in the source folder for this code. Change the name of the output to include the lake name and then _XYZtoTextFilesandLidarProcessing.html and move it into the lake's RTextFiles folder. For example:
+
+GardenCityOld_XYZtoTextFilesandLidarProcessing.html
+
+#### Sit back, relax, and watch the magic happen...
 
 ```{r}
 
-XYZToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
+XYZToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/GardenCityOldDEMO/2020-07_GardenCityOld",
+                                 lake_name = "GardenCityOld",
+                                 WSEL =271.74,
+                                 dam_elev =271.874,
+                                 alt_source_types=c("ADCP","SB","GPS"))
+
+LidarToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/GardenCityOldDEMO/2020-07_GardenCityOld",
                                  lake_name = "GardenCityOld",
                                  WSEL =271.74,
                                  dam_elev =271.874)
 
-LidarToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
-                                 lake_name = "GardenCityOld",
-                                 WSEL =271.74,
-                                 dam_elev =271.874)
-
-XCheckToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityOld",
+XCheckToTextFiles(home_dir = "E:/HYPACK_Projects/2020_DNR_Lakes/GardenCityOldDEMO/2020-07_GardenCityOld",
                                  lake_name = "GardenCityOld")
 
 
