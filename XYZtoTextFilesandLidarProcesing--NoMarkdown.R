@@ -150,7 +150,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev,alt_source_types){
   
   
   df=unique(df) #Removing duplicates that may have occurred during joining 
-  df$Z=df$Z*3.28 #Converting the Z column to feet
+  df$Z=df$Z*3.2808 #Converting the Z column to feet
   df$TPU <- ifelse(df$Source=="MB",df$TPU*3.2808,df$TPU)
   
   #df$TPU=df$TPU*3.28 #Converting the CUBE Uncert column
@@ -192,6 +192,7 @@ XYZToTextFiles<-function(home_dir, lake_name, WSEL, dam_elev,alt_source_types){
   #Stopping the clock to record how long the program took to run
   end.time <- Sys.time()
   time.taken <- end.time - start.time
+  print(time.taken)
 }
 
 
@@ -289,7 +290,7 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #Refer to Excel document for corrected WSE and the WSL Projections Proposal for top of dam/spillway
   print("Merging and moving stuff around...")
   elev=las_all[,3]
-  clip_las=subset(las_all,elev<=(dam_elev + 5)) #Selects Lidar points that are less than 3 meters above the dam/spillway
+  clip_las=subset(las_all,elev<=(dam_elev + 5)) #Selects Lidar points that are less than 5 meters above the dam/spillway
   clip_las$Z=clip_las$Z*3.28 #Converting to feet
   
   print("Writing out the best-looking tables you've ever seen...")
@@ -300,9 +301,9 @@ LidarToTextFiles <- function(home_dir, lake_name, WSEL, dam_elev){
   #Stopping the clock to record how long the program took to run
   end.time <- Sys.time()
   time.taken <- end.time - start.time
+  print(time.taken)
   
 }
-
 
 XCheckToTextFiles <- function(home_dir,lake_name){
   sort_path = paste(home_dir,"/Sort",sep="")
@@ -338,7 +339,6 @@ XCheckToTextFiles <- function(home_dir,lake_name){
   
   
 }
-
 
 
 
