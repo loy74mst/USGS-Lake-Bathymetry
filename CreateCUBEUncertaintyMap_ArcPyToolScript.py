@@ -23,7 +23,9 @@ CUBEUncertInterp = Output_QA_Geodatabase + "\\"+ Lake_Name + "_CUBEUncertInterp"
 CUBEUncertraster = QA_Folder + "\\" + Lake_Name + "_CUBEUncertraster.tif"
 
 # Process: Polygon to Raster
-arcpy.PolygonToRaster_conversion(MB_Extent_Polygon, "Coffee", MBextentRaster, "CELL_CENTER", "NONE", "0.5")
+arcpy.AddField_management(MB_Extent_Polygon, "FID1", "SHORT")
+arcpy.CalculateField_management(MB_Extent_Polygon, "FID1", "0")
+arcpy.PolygonToRaster_conversion(MB_Extent_Polygon, "FID1", MBextentRaster, "CELL_CENTER", "NONE", "0.5")
 
 # Process: Natural Neighbor
 arcpy.AddMessage("Interpolating the CUBE_Uncert field between the Map=1 points...")

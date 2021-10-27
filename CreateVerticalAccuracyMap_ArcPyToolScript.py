@@ -24,7 +24,9 @@ VAinterp = Output_QA_Geodatabase + "\\" + Lake_Name + "_VAInterp"
 VAraster = QA_Folder + "\\" + Lake_Name + "_VARaster.tif"
 
 # Process: Polygon to Raster --> Converting the MBpoly to a raster in case it hasn't been done already
-arcpy.PolygonToRaster_conversion(MB_Extent_Polygon, "Coffee", MBextentRaster, "CELL_CENTER", "NONE", "0.5")
+arcpy.AddField_management(MB_Extent_Polygon, "FID1", "SHORT")
+arcpy.CalculateField_management(MB_Extent_Polygon, "FID1", "0")
+arcpy.PolygonToRaster_conversion(MB_Extent_Polygon, "FID1", MBextentRaster, "CELL_CENTER", "NONE", "0.5")
 
 # Process: Add Field --> Adding the difference field to the QA points
 arcpy.AddMessage("Adding the 'Difference' field to the QA points feature class and computing Z_MBelev - Z...")
