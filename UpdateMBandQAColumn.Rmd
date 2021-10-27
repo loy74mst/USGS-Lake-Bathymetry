@@ -9,11 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# 1. Function Definition:
+This code uses the name of the lake, the home directory, and a list of alternative data sources to update the Map=1 and QA=1 points from the original bathy points table that was output in the RTextFiles folder. It also records and exports the min/max values for the X, Y, Z, and CUBE Uncert columns for metadata production. Note: alternative data sources are not included in finding the min/max values because of their CUBE_Uncert=-9999 assignments.The outputs for this code can be found in the lake's Provisional-Final folder.
 
 ```{r}
 library(dplyr)
 options(digits=12)
-updateMBQAcols = function(lake_name, home_dir){
+updateMBQAcols = function(lake_name, home_dir,alt_data_sources){
 
   #Reading in the new xyz_map_thinned attribute table
   ls = list.files(path=paste(home_dir,'/GIS',sep=""),pattern=".csv$",full.names = TRUE)
@@ -51,6 +53,7 @@ updateMBQAcols = function(lake_name, home_dir){
   names(xyz)[names(xyz)=="Source.x"]<-"Source"
   names(xyz)[names(xyz)=="QA.x"]<-"QA"
   names(xyz)[names(xyz)=="Rand.x"]<-"Rand"
+  names(xyz)[names(xyz)=="CUBE_Uncert.x"] <- "CUBE_Uncert"
   
   #Deleting unnecessary columns
   xyz$Map.y<-NULL
@@ -59,10 +62,13 @@ updateMBQAcols = function(lake_name, home_dir){
   xyz$QA.y<-NULL
   xyz$Rand.y<-NULL
   xyz$TPU.y<-NULL
-  xyz$CUBE_Uncer <- NULL
+  xyz$CUBE_Uncert.y <- NULL
   
   #We'll see if this code works.
-  xyz$CUBE_Uncert[xyz$Source == 'ADCP'] <- -9999
+  i=1
+  for(i in 1:length(alt_data_sources)){
+      xyz$CUBE_Uncert[xyz$Source == alt_data_sources[i]] <- -9999
+  }
   
   #Assigning QA points
   xyz$QA = ifelse(xyz$Rand==6,1,0)
@@ -71,18 +77,26 @@ updateMBQAcols = function(lake_name, home_dir){
 
   #Removing potential Map Points and QA Points duplicates and assigning QA points based on random number
   xyz$QA=ifelse(xyz$Rand==6 & xyz$Map!=1,1,0)
-  #testing, removing QA==1 if ADCP==1
-  length(which(xyz$Source=="ADCP" & xyz$QA==1))
-  xyz$QA=ifelse(xyz$Source=="ADCP" & xyz$Rand==6,0,xyz$QA)
-  length(which(xyz$Source=="ADCP" & xyz$QA==1))
-  paste("Number of QA points removed: ",prefilter_qa_length - length(which(xyz$QA==1)))
-  paste("Number of QA points left: ",length(which(xyz$QA==1)))
-  
+  #testing, removing QA==1 in alternative data sources
+  if(length(alt_data_sources)!=0){
+      i=1
+    for(i in 1:length(alt_data_sources)){
+      paste("Number of QA points from alternative data sources: ",length(which(xyz$Source==alt_data_sources[i] & xyz$QA==1)))
+      xyz$QA=ifelse(xyz$Source==alt_data_sources[i] & xyz$Rand==6,0,xyz$QA)
+      length(which(xyz$Source==alt_data_sources[i] & xyz$QA==1))
+      qa_remaining = prefilter_qa_length - length(which(xyz$Source==alt_data_sources[i] & xyz$QA==1))
+      paste("Number of QA points left after filtering from alternative data sources: ",qa_remaining)
+    
+    }
+  }
+
+
   #Removing the RAND column for export
   xyz2=xyz[,-7]
   
   #Outputting a final Map/QA file for metadata
   out_fulltable = paste(home_dir,"/","Provisional-Final/",lake_name,"_xyz_fulltable.csv",sep="")
+  print("Writing out full bathy points table...")
   write.table(xyz2,out_fulltable,row.names=FALSE,sep=",")
 
   #Writing the metadata
@@ -96,14 +110,17 @@ updateMBQAcols = function(lake_name, home_dir){
   meta[2,2]<-min(xyz2$Y)
   meta[2,3]<-min(xyz2$Z)
   
-  #ADCP
-  if('ADCP' %in% xyz2$Source){
-    temp=xyz2[!(xyz2$Source=="ADCP"),]
-    temp2=xyz2[!(xyz2$Source=="GPS"),]
-    meta[1,4]<-max(temp$CUBE_Uncert)
-    meta[2,4]<-min(temp$CUBE_Uncert)
+  #If alternative data sources are present
+
+  if(length(alt_data_sources)!=0){
+      i=1
+      for(i in 1:length(alt_data_sources)){
+          temp=xyz2[!(xyz2$Source==alt_data_sources[i]),]
+      }
+      meta[1,4]<-max(temp$CUBE_Uncert)
+      meta[2,4]<-min(temp$CUBE_Uncert)
   }else{
-    #No ADCP
+    #No alternative data sources
     meta[1,4]<-max(xyz2$CUBE_Uncert)
     meta[2,4]<-min(xyz2$CUBE_Uncert)
   }
@@ -111,14 +128,17 @@ updateMBQAcols = function(lake_name, home_dir){
   #################
   colnames(meta)<-c("X","Y","Z","CUBE Uncert")
   out_meta = paste(home_dir,"/","Provisional-Final/",lake_name,"_meta_minmax.csv",sep="")
+  print("Writing out metadata table...")
   write.table(meta, file=out_meta,row.names=FALSE,sep=",")
+  print("All done!")
 }
 ```
 
 
 ```{r}
-updateMBQAcols(lake_name = 'MilanCityLake',
-               home_dir = 'E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_MilanCityLake')
+updateMBQAcols(lake_name = 'GardenCityNew',
+               home_dir = 'E:/HYPACK_Projects/2020_DNR_Lakes/2020-07_GardenCityNew',
+               alt_data_sources = c())
 
 ```
 
